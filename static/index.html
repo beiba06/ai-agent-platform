@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Agent</title>
+<title>Fact-Check Agent</title>
 <style>
   :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
   body { max-width: 760px; margin: 0 auto; padding: 16px; }
@@ -23,22 +23,22 @@
 </style>
 </head>
 <body>
-<h1>AI Agent</h1>
-<p class="intro">Ask anything. It searches the web, reads your documents, runs code in a sandbox, and cites its sources.
+<h1>Fact-Check Agent</h1>
+<p class="intro">Give it a document or a claim. It checks them against current information, runs code when it needs to calculate, and shows its sources.
   <small>Messages and files are sent to Anthropic's API, and files stay in this server's memory for your chat only.
   Please don't upload anything private.</small></p>
 <p id="examples">
-  <button>What happened in AI this week?</button>
-  <button>Use code to find the 50th Fibonacci number.</button>
+  <button>Check this claim: Python 3.12 is the newest stable release of Python.</button>
+  <button>Check this claim: the first 1000 prime numbers add up to 3,682,913.</button>
 </p>
 <p>
-  <button id="sample">Try the sample document</button> <a class="meta" href="/sample.pdf" target="_blank">view PDF</a>
+  <button id="sample">Check the sample document</button> <a class="meta" href="/sample.pdf" target="_blank">view PDF</a>
   <input id="file" type="file" accept=".pdf,.txt,.md" aria-label="Upload a PDF, TXT or MD file">
   <span id="note" class="meta"></span>
 </p>
 <div id="log"></div>
 <form id="form">
-  <textarea id="input" rows="2" maxlength="4000" placeholder="Ask a question…" required></textarea>
+  <textarea id="input" rows="2" maxlength="4000" placeholder="Paste a claim, or ask about your document…" required></textarea>
   <button id="send">Send</button>
 </form>
 <script>
@@ -125,7 +125,7 @@ document.getElementById("file").addEventListener("change", async e => {
   e.target.value = "";  // lets the same file be chosen again
 });
 document.getElementById("sample").addEventListener("click", async () => {
-  if (await load(`/sample?session_id=${sessionId}`, "sample.pdf")) ask("What are the four core functions of this framework, and on which pages are they described?");
+  if (await load(`/sample?session_id=${sessionId}`, "sample.pdf")) ask("Check this document against current information. Which key claims still hold, and what is out of date?");
 });
 document.getElementById("form").addEventListener("submit", e => {
   e.preventDefault();
