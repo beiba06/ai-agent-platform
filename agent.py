@@ -124,17 +124,3 @@ async def chat(session_id: str, text: str):
         busy.discard(session_id)
         if not completed:
             del messages[start:]  # drop a failed or interrupted turn so the history stays valid
-
-
-if __name__ == "__main__":  # chat in the terminal: python agent.py
-    import asyncio
-
-    async def main():
-        while question := input("\nYou: ").strip():
-            async for event in chat("terminal", question):
-                if event["type"] == "text":
-                    print(event["text"], end="", flush=True)
-                else:
-                    print(f"\n  {event}")
-
-    asyncio.run(main())
