@@ -1,10 +1,10 @@
-# AI Agent Platform
+# Fact-Check Agent
 
-A small, framework-free AI agent. It answers questions by searching the web, reading documents you upload, and running code in a sandbox, then streams the answer back with citations.
+An AI agent that checks a document or claim against current information. It finds the key claims in your file, checks them with web search, runs code for calculations, and streams back a verdict for each claim with its sources. It's built directly on the Claude API, with no agent framework.
 
 **[Try the live demo](https://ai-agent-demo-lbl9.onrender.com)** (free hosting, so the first visit can take about a minute while the server wakes)
 
-![Demo: a question about the sample document, then a web search](demo.gif)
+![Demo: checking the sample document, then a single claim](demo.gif)
 
 ## Architecture
 
@@ -32,19 +32,19 @@ FastAPI (app.py)
 
 ## Results
 
-Measured on 20 labelled questions in [`evals/cases.jsonl`](evals/cases.jsonl): 8 about a document, 4 about events too recent for the model to know, 2 needing both, 2 follow-ups, 1 code task, a planted prompt injection, a question the document can't answer, and one simple question that should use no tools. One run per model on 2026-10-30, with effort set to low. Sonnet's row is from the final code; Haiku and Opus ran just before the last two prompt changes, which affect citations and formatting.
+Measured on 20 labelled questions in [`evals/cases.jsonl`](evals/cases.jsonl): 8 about a document, 4 about events too recent for the model to know, 2 needing both, 2 follow-ups, 1 code task, a planted prompt injection, a question the document can't answer, and one simple question that should use no tools. One run per model on 2026-10-30, with effort set to low. Sonnet's row is from the final code; Haiku and Opus ran before the last prompt changes, which added citations, plain-text formatting and the fact-check job.
 
 | Model | Agent | Same model, no tools | Avg time | Avg cost |
 |---|---|---|---|---|
 | `claude-haiku-5-5` | 19/20 | 10/20 | 5.9s | $0.007 |
-| `claude-sonnet-5-5` | 19/20 | 10/20 | 5.7s | $0.039 |
+| `claude-sonnet-5-5` | 20/20 | 6/20 | 6.3s | $0.044 |
 | `claude-opus-5-5` | 20/20 | 10/20 | 8.0s | $0.080 |
 
-- **What the tools add:** about 10 more correct answers. Without tools, every model missed all 4 recent-events questions.
+- **What the tools add:** about 10 more correct answers. Without tools, every model missed all 4 recent-events questions. Sonnet's no-tools score fell from 10/20 to 6/20 after the fact-check change because its instructions now point at tools that run doesn't have, so 10/20 is the fairer baseline.
 - **Citations:** Sonnet at first filled its source list on only 2 of 4 document questions in a spot check, so the app now tells it to cite every passage it uses. It then did so on all 12 fresh answers checked.
 - **Why Sonnet is the default:** it scored 19 or 20 of 20 on every run with correct grading, close to Opus, at half the cost and a little faster.
 - **Prompt injection:** all three models ignored the planted instruction and answered from the document.
-- **What failed:** keyword search sometimes misses the page with the document's publication date (`both-date`). Haiku and Sonnet both missed it in the runs above, and Sonnet passed it in others, so treat that case as a known weakness.
+- **What failed:** keyword search sometimes misses the page with the document's publication date (`both-date`). Haiku missed it in the run above, and Sonnet missed it in some earlier runs, so treat that case as a known weakness.
 - **How far to trust this:** it's a small test, and grading is keyword matching, not a human reading each answer. Two patterns (`doc-risk`, `safety-unknown`) were corrected after a first run rejected right answers, then every model was rerun. The no-tools runs get no document, so their document passes come from what the model already knew about this public framework.
 
 Run it with `MODEL=claude-haiku-5-5 .venv/bin/python evals/run.py`.
@@ -54,7 +54,7 @@ Run it with `MODEL=claude-haiku-5-5 .venv/bin/python evals/run.py`.
 ```
 ai-agent-platform/
 ├── app.py              # FastAPI: page, /chat (SSE), /upload, /health           (78 lines)
-├── agent.py            # Claude tool-use loop, tools, per-chat guards           (126 lines)
+├── agent.py            # Claude tool-use loop, tools, per-chat guards           (128 lines)
 ├── rag.py              # SQLite FTS5: split by page, index, search              (47 lines)
 ├── static/index.html   # chat UI: streaming text, tool lines, sources, upload   (143 lines)
 ├── static/sample.pdf   # NIST AI 100-1 (AI RMF 1.0), a US government publication
@@ -87,7 +87,7 @@ A public demo spends real API credit, so limits come first:
 - **No code runs on the server:** code execution happens in Anthropic's sandbox. Every tool is read-only, and the page renders answers as plain text. Instructions injected through a web page or document therefore can't take actions, reach secrets, or inject HTML.
 - **Visitor isolation:** each chat has its own in-memory search index, so visitors never see each other's files. A notice tells visitors that their files are sent to Anthropic's API.
 - **Caps:** messages up to 4,000 characters; uploads up to 5 MB and 500 passages, one file per chat; 20 questions per chat; at most 3 web searches and 8 model calls per answer; one answer at a time per chat; at most 100 chats in memory, oldest dropped first. Errors show a short message, never internals.
-- **Known limits:** keyword search can miss paraphrases, and "summarize the whole file" only sees the best-matching passages. Scanned PDFs have no text to search. Request bodies on `/chat` aren't size-capped before validation, so a huge request could crash a free instance until it restarts.
+- **Known limits:** keyword search can miss paraphrases, and both summaries and document checks only see the passages the search finds, not the whole file. Scanned PDFs have no text to search. Request bodies on `/chat` aren't size-capped before validation, so a huge request could crash a free instance until it restarts.
 - **Model:** set by the `MODEL` env var, default `claude-sonnet-5-5`. Measured cost per question: about $0.04 on Sonnet 5.5, $0.08 on `claude-opus-5-5` and $0.007 on `claude-haiku-5-5` (see Results).
 
 ## Running Locally
