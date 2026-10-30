@@ -32,7 +32,7 @@
   <button>Use code to find the 50th Fibonacci number.</button>
 </p>
 <p>
-  <button id="sample">Try the sample document</button>
+  <button id="sample">Try the sample document</button> <a class="meta" href="/sample.pdf" target="_blank">view PDF</a>
   <input id="file" type="file" accept=".pdf,.txt,.md" aria-label="Upload a PDF, TXT or MD file">
   <span id="note" class="meta"></span>
 </p>
@@ -101,13 +101,13 @@ async function ask(question) {
   input.focus();
 }
 
-async function upload(name, file) {
+async function load(url, name, file) {
   if (send.disabled) return false;
   send.disabled = true;
   const note = document.getElementById("note");
   note.textContent = `Reading ${name}…`;
   try {
-    const res = await fetch(`/upload?session_id=${sessionId}&name=${encodeURIComponent(name)}`, {method: "POST", body: file});
+    const res = await fetch(url, {method: "POST", body: file});
     const body = await res.json();
     note.textContent = res.ok ? body.message : typeof body.detail === "string" ? body.detail : "Upload failed.";
     return res.ok;
@@ -120,12 +120,12 @@ async function upload(name, file) {
 }
 
 document.getElementById("file").addEventListener("change", async e => {
-  if (e.target.files[0]) await upload(e.target.files[0].name, e.target.files[0]);
+  const file = e.target.files[0];
+  if (file) await load(`/upload?session_id=${sessionId}&name=${encodeURIComponent(file.name)}`, file.name, file);
   e.target.value = "";  // lets the same file be chosen again
 });
 document.getElementById("sample").addEventListener("click", async () => {
-  const file = await (await fetch("/sample.pdf")).blob();
-  if (await upload("sample.pdf", file)) ask("What are the four core functions of this framework, and on which pages are they described?");
+  if (await load(`/sample?session_id=${sessionId}`, "sample.pdf")) ask("What are the four core functions of this framework, and on which pages are they described?");
 });
 document.getElementById("form").addEventListener("submit", e => {
   e.preventDefault();

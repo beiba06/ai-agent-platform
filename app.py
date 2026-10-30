@@ -15,6 +15,7 @@ import rag
 STATIC = Path(__file__).parent / "static"
 CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
 MAX_UPLOAD = 5 * 1024 * 1024
+SAMPLE = rag.read("sample.pdf", (STATIC / "sample.pdf").read_bytes())  # parsed once: slow on a small server
 
 app = FastAPI()
 
@@ -46,6 +47,13 @@ async def chat(req: ChatRequest):
             if event["type"] in ("done", "error"):  # one log line per answer, without message text or sources
                 print(json.dumps({k: v for k, v in event.items() if k != "sources"}), flush=True)
             yield event
+
+
+@app.post("/sample")
+async def load_sample(session_id: str = Query(min_length=8, max_length=64)):
+    agent.open_chat(session_id)
+    rag.add(session_id, SAMPLE)
+    return {"message": "sample.pdf is ready. Ask a question about it."}
 
 
 @app.post("/upload")
