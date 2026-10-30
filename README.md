@@ -22,7 +22,7 @@ FastAPI (app.py)
 
 - [x] **M1: Agent core**: `agent.py`, a streaming tool-use loop with web search and code execution. It answers current-events questions with cited sources.
 - [x] **M2: Chat UI**: `app.py` + `static/index.html`. Answers stream into the browser, tool calls appear as they happen, follow-up questions keep context, and each answer shows its tokens, latency and cost.
-- [ ] **M3: Your documents**: `rag.py` + `/upload` + the `search_docs` tool. Answers cite the file and page. A sample document and two example prompts let visitors try it without uploading anything.
+- [x] **M3: Your documents**: `rag.py` + `/upload` + the `search_docs` tool. Answers cite the file and page. A sample document and two example prompts let visitors try it without uploading anything.
 - [ ] **M4: Measure**: `evals/` runs 20 questions, including a prompt-injection test, through the agent and through the same model with no tools, on Opus, Sonnet and Haiku. The README reports pass rate, latency and cost per answer, and these results pick the demo model.
 - [ ] **M5: Ship**: `Dockerfile` + Render + a capped API workspace give a live URL. A demo GIF goes at the top of this README.
 

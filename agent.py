@@ -1,9 +1,11 @@
-"""Claude agent: a streaming tool-use loop with web search and a code sandbox."""
+"""Claude agent: a streaming tool-use loop with web search, a code sandbox and document search."""
 import os
 import time
 from datetime import date
 
 import anthropic
+
+import rag
 
 MODEL = os.environ.get("MODEL", "claude-opus-5-5")
 PRICES = {  # $ per 1M tokens in/out, including the models a declined request can fall back to
@@ -17,7 +19,16 @@ SYSTEM = (
 TOOLS = [
     {"type": "web_search_20260318", "name": "web_search", "max_uses": 3, "allowed_callers": ["direct"]},
     {"type": "code_execution_20260521", "name": "code_execution"},  # runs in Anthropic's sandbox, not on this server
+    {
+        "name": "search_docs",
+        "description": "Search the document uploaded in this chat. Pass a few keywords. "
+                       "Returns the best-matching passages, labelled with the file and page.",
+        "input_schema": {"type": "object", "properties": {"query": {"type": "string"}},
+                         "required": ["query"], "additionalProperties": False},
+        "strict": True,
+    },
 ]
+DOC_NOTE = "\n\n(The visitor has uploaded a document in this chat. Use search_docs for anything about it.)"
 # If Claude declines a request, the API reruns it on a fallback model. Haiku 5.5 has no fallback.
 FALLBACK = {} if "haiku" in MODEL else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
 
@@ -26,14 +37,27 @@ sessions: dict[str, list] = {}  # session id -> message history, append-only (at
 busy: set[str] = set()  # sessions with an answer in progress
 
 
+def open_chat(session_id: str) -> list:
+    """Return a chat's history, forgetting the oldest chat and its document when there are already 100."""
+    if session_id not in sessions and len(sessions) >= 100:
+        oldest = next(iter(sessions))
+        del sessions[oldest]
+        rag.forget(oldest)
+    return sessions.setdefault(session_id, [])
+
+
+def search_docs(session_id: str, query: str):
+    """Run a document search. search_result blocks let Claude cite the exact passage."""
+    return [{"type": "search_result", "source": label, "title": label, "content": [{"type": "text", "text": passage}],
+             "citations": {"enabled": True}} for label, passage in rag.search(session_id, query)] or "No document was uploaded."
+
+
 async def chat(session_id: str, text: str):
     """Answer one message, yielding text and tool events, then a done or error event."""
     if session_id in busy:
         yield {"type": "error", "message": "Please wait for the current answer to finish."}
         return
-    if session_id not in sessions and len(sessions) >= 100:
-        sessions.pop(next(iter(sessions)))  # forget the oldest chat
-    messages = sessions.setdefault(session_id, [])
+    messages = open_chat(session_id)
     if sum(m["role"] == "user" and isinstance(m["content"], str) for m in messages) >= 20:
         yield {"type": "error", "message": "This chat is full. Reload the page to start a new one."}
         return
@@ -41,7 +65,7 @@ async def chat(session_id: str, text: str):
     start, began, completed = len(messages), time.monotonic(), False
     tokens, cost = 0, 0.0
     sources = {}  # url or document -> title
-    messages.append({"role": "user", "content": text})
+    messages.append({"role": "user", "content": text + DOC_NOTE if session_id in rag.indexes else text})
     try:
         for _ in range(8):  # at most 8 model calls per answer
             async with client.beta.messages.stream(
@@ -74,7 +98,11 @@ async def chat(session_id: str, text: str):
                 content = [b for i, b in enumerate(content) if i >= cut or b.type in ("text", "fallback")
                            or b.type.endswith("_tool_result") or (b.type == "server_tool_use" and b.id in paired)]
             messages.append({"role": "assistant", "content": content})
-            if msg.stop_reason != "pause_turn":
+            if msg.stop_reason == "tool_use":
+                messages.append({"role": "user", "content": [  # only tool results in this message
+                    {"type": "tool_result", "tool_use_id": b.id, "content": search_docs(session_id, b.input["query"])}
+                    for b in content if b.type == "tool_use"]})
+            elif msg.stop_reason != "pause_turn":
                 break
         else:
             yield {"type": "error", "message": "That took too many steps. Try a simpler question."}

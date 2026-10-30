@@ -24,11 +24,17 @@
 </head>
 <body>
 <h1>AI Agent</h1>
-<p class="intro">Ask anything. It searches the web, runs code in a sandbox, and cites its sources.
-  <small>Your messages are sent to Anthropic's API.</small></p>
+<p class="intro">Ask anything. It searches the web, reads your documents, runs code in a sandbox, and cites its sources.
+  <small>Messages and files are sent to Anthropic's API, and files stay in this server's memory for your chat only.
+  Please don't upload anything private.</small></p>
 <p id="examples">
   <button>What happened in AI this week?</button>
   <button>Use code to find the 50th Fibonacci number.</button>
+</p>
+<p>
+  <button id="sample">Try the sample document</button>
+  <input id="file" type="file" accept=".pdf,.txt,.md" aria-label="Upload a PDF, TXT or MD file">
+  <span id="note" class="meta"></span>
 </p>
 <div id="log"></div>
 <form id="form">
@@ -95,6 +101,32 @@ async function ask(question) {
   input.focus();
 }
 
+async function upload(name, file) {
+  if (send.disabled) return false;
+  send.disabled = true;
+  const note = document.getElementById("note");
+  note.textContent = `Reading ${name}…`;
+  try {
+    const res = await fetch(`/upload?session_id=${sessionId}&name=${encodeURIComponent(name)}`, {method: "POST", body: file});
+    const body = await res.json();
+    note.textContent = res.ok ? body.message : typeof body.detail === "string" ? body.detail : "Upload failed.";
+    return res.ok;
+  } catch {
+    note.textContent = "Upload failed.";
+    return false;
+  } finally {
+    send.disabled = false;
+  }
+}
+
+document.getElementById("file").addEventListener("change", async e => {
+  if (e.target.files[0]) await upload(e.target.files[0].name, e.target.files[0]);
+  e.target.value = "";  // lets the same file be chosen again
+});
+document.getElementById("sample").addEventListener("click", async () => {
+  const file = await (await fetch("/sample.pdf")).blob();
+  if (await upload("sample.pdf", file)) ask("What are the four core functions of this framework, and on which pages are they described?");
+});
 document.getElementById("form").addEventListener("submit", e => {
   e.preventDefault();
   const question = input.value.trim();
