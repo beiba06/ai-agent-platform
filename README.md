@@ -72,7 +72,7 @@ ai-agent-platform/
 | **In-memory sessions** | an append-only message list and its own search index per chat, no extra service; resets on restart, which is fine for a demo | Redis (another service to run) |
 | **Server-Sent Events (FastAPI built-in)** | one endpoint; keepalive pings hold the connection open while the agent searches | WebSocket (connection handling on both ends) |
 | **FastAPI + one static HTML page** | async streaming, serves its own UI, no build step | React / Next.js (a second project) |
-| **Render free tier (Docker)** | deploys from GitHub, fits in 512 MB | HF Spaces (Docker now needs PRO), Railway (30-day trial, then $1/mo credit), Fly.io / Koyeb (no free tier) |
+| **Render free tier (Docker)** | deploys from GitHub; in a 512 MB container the app idled at 82 MB and peaked at 136 MB with 31 documents loaded | HF Spaces (Docker now needs PRO), Railway (30-day trial, then $1/mo credit), Fly.io / Koyeb (no free tier) |
 
 ## Safety & Cost
 
