@@ -1,68 +1,91 @@
 # AI Agent Platform
 
-A multi-tool AI agent that breaks down complex tasks into tool calls, retrieves context via RAG, and streams structured responses.
+A small, framework-free AI agent. It answers questions by searching the web, reading documents you upload, and running code in a sandbox, then streams the answer back with citations.
 
-## Architecture (MVP)
+## Architecture
 
 ```
-Client (WebSocket) → FastAPI
-                        └── Agent (LangGraph)
-                              ├── tool: web_search (Tavily)
-                              ├── tool: rag_query (ChromaDB)
-                              └── tool: code_exec (subprocess)
-                        └── Memory (Redis)
+Browser (static/index.html)
+   │  POST /chat    → Server-Sent Events: text · tool calls · citations · cost
+   │  POST /upload  → PDF / TXT / MD (raw bytes, max 5 MB)
+   ▼
+FastAPI (app.py)
+   └── agent loop (agent.py) ──► Claude API (Anthropic Python SDK)
+         │                          ├── web_search      server tool, runs at Anthropic
+         │                          └── code_execution  server tool, sandboxed, no internet
+         └── search_docs tool ──► rag.py ──► SQLite FTS5, one in-memory index per chat
 ```
 
-**Core principle: minimum code, maximum impact.** No abstractions until needed. One file per concern. No config framework, no ORM, no middleware stack.
+**Core principle: minimum code, maximum impact.** One container, one secret, no framework, no extra services. Nothing the API already provides (search, code sandbox, citations) gets rebuilt.
 
-## MVP Milestones
+## Milestones
 
-1. **M1: Agent core** — FastAPI + LangGraph agent + 1 tool (web search) → chat works
-2. **M2: RAG** — Upload docs + query them via ChromaDB → agent answers from your docs
-3. **M3: Code exec** — Agent can run Python code in a sandbox → agent solves code tasks
-4. **M4: Memory** — Redis conversation history → multi-turn conversations
-5. **M5: Streaming** — WebSocket token streaming → real-time UX
-6. **M6: Deploy** — Docker Compose + Railway → live URL
+- [ ] **M1: Agent core**: `agent.py`, a streaming tool-use loop with web search and code execution. It answers current-events questions with cited sources.
+- [ ] **M2: Chat UI**: `app.py` + `static/index.html`. Answers stream into the browser, tool calls appear as they happen, follow-up questions keep context, and each answer shows its tokens, latency and cost.
+- [ ] **M3: Your documents**: `rag.py` + `/upload` + the `search_docs` tool. Answers cite the file and page. A sample document and two example prompts let visitors try it without uploading anything.
+- [ ] **M4: Measure**: `evals/` runs 20 questions, including a prompt-injection test, through the agent and through the same model with no tools, on Opus, Sonnet and Haiku. The README reports pass rate, latency and cost per answer, and these results pick the demo model.
+- [ ] **M5: Ship**: `Dockerfile` + Render + a capped API workspace give a live URL. A demo GIF goes at the top of this README.
 
-## File Structure (MVP — 8 files total)
+## File Structure
 
 ```
 ai-agent-platform/
-├── app.py              # FastAPI: routes + WebSocket (< 80 lines)
-├── agent.py            # LangGraph agent graph (< 100 lines)
-├── tools.py            # Tool definitions: search, rag, code (< 80 lines)
-├── rag.py              # ChromaDB: ingest + query (< 60 lines)
-├── requirements.txt    # Dependencies
-├── Dockerfile          # Single-stage Python container
-├── docker-compose.yml  # App + Redis + ChromaDB
+├── app.py              # FastAPI: page, /chat (SSE), /upload, /health           (70 lines)
+├── agent.py            # Claude tool-use loop, tools, per-chat guards           (126 lines)
+├── rag.py              # SQLite FTS5: split by page, index, search              (47 lines)
+├── static/index.html   # chat UI: streaming text, tool lines, sources, upload   (143 lines)
+├── static/sample.pdf   # NIST AI 100-1 (AI RMF 1.0), a US government publication
+├── evals/              # M4: cases.jsonl + run.py                               (~50 lines)
+├── requirements.txt    # anthropic, fastapi, uvicorn, pypdf (exact pins)
+├── Dockerfile          # single-stage python:3.12-slim, non-root user
 └── README.md
 ```
 
-**That's it. 8 files. ~320 lines of code for a working AI agent with RAG.**
+**About 250 lines of Python and one 143-line page: no database server, no vector DB, no Redis, no docker-compose.**
 
 ## Tech Choices (and why)
 
 | Choice | Why | Not |
 |--------|-----|-----|
-| **FastAPI** | async, WebSocket native, zero boilerplate | Flask (no async), Django (too heavy) |
-| **LangGraph** | stateful agent graph, tool calling built-in | Raw OpenAI (no orchestration), CrewAI (too abstract) |
-| **ChromaDB** | embedded, zero config, pip install | Pinecone (needs account), Weaviate (needs server) |
-| **Redis** | session memory, 1 line to connect | SQLite (no TTL), Postgres (overkill for memory) |
-| **Tavily** | search API built for agents, free tier | SerpAPI (expensive), Google (complex auth) |
+| **Anthropic Python SDK, no framework** | the agent loop is ~30 lines; every step is visible and easy to explain | LangGraph / LangChain (extra layers around a single loop) |
+| **Claude server tools: web search + code execution** | zero code, no second API key; code runs in Anthropic's sandbox with no internet, never on this server | Tavily (second key), `subprocess` (runs model-written code next to the API key) |
+| **SQLite FTS5 (BM25 keyword search)** | built into Python: no extra packages, ~2 MB RAM; the agent writes its own search queries | ChromaDB + local embeddings (~1 GB RAM, ~600 MB image: too big for free hosting) |
+| **In-memory sessions** | an append-only message list and its own search index per chat, no extra service; resets on restart, which is fine for a demo | Redis (another service to run) |
+| **Server-Sent Events (FastAPI built-in)** | one endpoint; keepalive pings hold the connection open while the agent searches | WebSocket (connection handling on both ends) |
+| **FastAPI + one static HTML page** | async streaming, serves its own UI, no build step | React / Next.js (a second project) |
+| **Render free tier (Docker)** | deploys from GitHub, fits in 512 MB | HF Spaces (Docker now needs PRO), Railway (30-day trial, then $1/mo credit), Fly.io / Koyeb (no free tier) |
+
+## Safety & Cost
+
+A public demo spends real API credit, so limits come first:
+
+- **Spend and rate limits:** the API key belongs to a dedicated Anthropic Console workspace with a monthly spend limit (e.g. $20) and a requests-per-minute limit. When a limit is reached, the app shows "demo budget used up".
+- **No code runs on the server:** code execution happens in Anthropic's sandbox. Every tool is read-only, and the page renders answers as plain text. Instructions injected through a web page or document therefore can't take actions, reach secrets, or inject HTML.
+- **Visitor isolation:** each chat has its own in-memory search index, so visitors never see each other's files. A notice tells visitors that their files are sent to Anthropic's API.
+- **Caps:** messages up to 4,000 characters; uploads up to 5 MB and 500 passages, one file per chat; 20 questions per chat; at most 3 web searches and 8 model calls per answer; one answer at a time per chat; at most 100 chats in memory, oldest dropped first. Errors show a short message, never internals.
+- **Known limits:** keyword search can miss paraphrases, and "summarize the whole file" only sees the best-matching passages. Scanned PDFs have no text to search. Request bodies on `/chat` aren't size-capped before validation, so a huge request could crash a free instance until it restarts.
+- **Model:** set by the `MODEL` env var, default `claude-opus-5-5`. Estimated cost per answer with one search: ~$0.06–0.09 on Opus 5.5, ~$0.01 on `claude-haiku-5-5`. M4 replaces these estimates with measured numbers.
 
 ## Running Locally
 
 ```bash
-pip install -r requirements.txt
-docker compose up -d redis chromadb   # or skip if running without
-uvicorn app:app --reload
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+export ANTHROPIC_API_KEY=sk-ant-...      # optional: export MODEL=claude-haiku-5-5
+.venv/bin/uvicorn app:app --reload        # then open http://localhost:8000
 ```
 
 ## API
 
 ```
-POST /chat          {"message": "...", "session_id": "..."}
-POST /upload        multipart file upload → ingest into RAG
-WS   /ws/{session}  streaming chat via WebSocket
-GET  /health        health check
+GET  /                          chat page
+GET  /sample.pdf                the sample document
+POST /chat                      {"session_id": "...", "message": "..."} → SSE events (text, tool, citation, done, error)
+POST /upload?session_id=&name=  raw file bytes (PDF / TXT / MD, max 5 MB) → indexed for that chat
+GET  /health                    health check
 ```
+
+## Deploy
+
+**Render (free):** New → Web Service → connect this repo (Render builds the `Dockerfile`) → add `ANTHROPIC_API_KEY` → deploy. Free instances sleep after 15 minutes idle and take about a minute to wake.
+
+**Alternative: Google Cloud Run.** It has faster cold starts and a generous free tier, but needs a billing account with a card. Deploy with `gcloud run deploy --source .` and set `--max-instances 1`.
