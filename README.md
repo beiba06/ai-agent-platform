@@ -2,6 +2,10 @@
 
 A small, framework-free AI agent. It answers questions by searching the web, reading documents you upload, and running code in a sandbox, then streams the answer back with citations.
 
+**[Try the live demo](https://ai-agent-demo-lbl9.onrender.com)** (free hosting, so the first visit can take about a minute while the server wakes)
+
+![Demo: a question about the sample document, then a web search](demo.gif)
+
 ## Architecture
 
 ```
@@ -24,23 +28,23 @@ FastAPI (app.py)
 - [x] **M2: Chat UI**: `app.py` + `static/index.html`. Answers stream into the browser, tool calls appear as they happen, follow-up questions keep context, and each answer shows its tokens, latency and cost.
 - [x] **M3: Your documents**: `rag.py` + `/upload` + the `search_docs` tool. Answers cite the file and page. A sample document and two example prompts let visitors try it without uploading anything.
 - [x] **M4: Measure**: `evals/` runs 20 questions, including a prompt-injection test, through the agent and through the same model with no tools, on Opus, Sonnet and Haiku. The README reports pass rate, latency and cost per answer, and these results pick the demo model.
-- [ ] **M5: Ship**: `Dockerfile` + Render + a capped API workspace give a live URL. A demo GIF goes at the top of this README.
+- [x] **M5: Ship**: `Dockerfile` + Render + a capped API workspace give a live URL. A demo GIF goes at the top of this README.
 
 ## Results
 
-Measured on 20 labelled questions in [`evals/cases.jsonl`](evals/cases.jsonl): 8 about a document, 4 about events too recent for the model to know, 2 needing both, 2 follow-ups, 1 code task, a planted prompt injection, a question the document can't answer, and one simple question that should use no tools. One run per model on 2026-10-30, with effort set to low.
+Measured on 20 labelled questions in [`evals/cases.jsonl`](evals/cases.jsonl): 8 about a document, 4 about events too recent for the model to know, 2 needing both, 2 follow-ups, 1 code task, a planted prompt injection, a question the document can't answer, and one simple question that should use no tools. One run per model on 2026-10-30, with effort set to low. Sonnet's row is from the final code; Haiku and Opus ran just before the last two prompt changes, which affect citations and formatting.
 
 | Model | Agent | Same model, no tools | Avg time | Avg cost |
 |---|---|---|---|---|
 | `claude-haiku-5-5` | 19/20 | 10/20 | 5.9s | $0.007 |
-| `claude-sonnet-5-5` | 20/20 | 9/20 | 6.0s | $0.041 |
+| `claude-sonnet-5-5` | 19/20 | 10/20 | 5.7s | $0.039 |
 | `claude-opus-5-5` | 20/20 | 10/20 | 8.0s | $0.080 |
 
 - **What the tools add:** about 10 more correct answers. Without tools, every model missed all 4 recent-events questions.
-- **Citations:** Sonnet at first filled its source list on only 2 of 4 document questions in a spot check, so the app now tells it to cite every passage it uses. It then did so on 4 of 4, and the Sonnet row above was rerun with that change.
-- **Why Sonnet is the default:** it matched Opus at 20/20, at half the cost and a little faster.
+- **Citations:** Sonnet at first filled its source list on only 2 of 4 document questions in a spot check, so the app now tells it to cite every passage it uses. It then did so on all 12 fresh answers checked.
+- **Why Sonnet is the default:** it scored 19 or 20 of 20 on every run with correct grading, close to Opus, at half the cost and a little faster.
 - **Prompt injection:** all three models ignored the planted instruction and answered from the document.
-- **What failed:** keyword search sometimes misses the page with the document's publication date (`both-date`). Haiku missed it in this run, and Sonnet missed it in an earlier one, so treat that case as unreliable rather than solved.
+- **What failed:** keyword search sometimes misses the page with the document's publication date (`both-date`). Haiku and Sonnet both missed it in the runs above, and Sonnet passed it in others, so treat that case as a known weakness.
 - **How far to trust this:** it's a small test, and grading is keyword matching, not a human reading each answer. Two patterns (`doc-risk`, `safety-unknown`) were corrected after a first run rejected right answers, then every model was rerun. The no-tools runs get no document, so their document passes come from what the model already knew about this public framework.
 
 Run it with `MODEL=claude-haiku-5-5 .venv/bin/python evals/run.py`.
@@ -49,13 +53,14 @@ Run it with `MODEL=claude-haiku-5-5 .venv/bin/python evals/run.py`.
 
 ```
 ai-agent-platform/
-├── app.py              # FastAPI: page, /chat (SSE), /upload, /health           (70 lines)
+├── app.py              # FastAPI: page, /chat (SSE), /upload, /health           (78 lines)
 ├── agent.py            # Claude tool-use loop, tools, per-chat guards           (126 lines)
 ├── rag.py              # SQLite FTS5: split by page, index, search              (47 lines)
 ├── static/index.html   # chat UI: streaming text, tool lines, sources, upload   (143 lines)
 ├── static/sample.pdf   # NIST AI 100-1 (AI RMF 1.0), a US government publication
 ├── evals/              # run.py, cases.jsonl, injection.txt                     (61 lines)
 ├── requirements.txt    # anthropic, fastapi, uvicorn, pypdf (exact pins)
+├── demo.gif            # the demo at the top of this page
 ├── Dockerfile          # single-stage python:3.12-slim, non-root user
 └── README.md
 ```
@@ -98,6 +103,7 @@ export ANTHROPIC_API_KEY=sk-ant-...      # optional: export MODEL=claude-haiku-5
 ```
 GET  /                          chat page
 GET  /sample.pdf                the sample document
+POST /sample?session_id=        attach the already-parsed sample to that chat
 POST /chat                      {"session_id": "...", "message": "..."} → SSE events (text, tool, citation, done, error)
 POST /upload?session_id=&name=  raw file bytes (PDF / TXT / MD, max 5 MB) → indexed for that chat
 GET  /health                    health check
