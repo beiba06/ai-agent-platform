@@ -37,6 +37,7 @@ Measured on 20 labelled questions in [`evals/cases.jsonl`](evals/cases.jsonl): 8
 | `claude-opus-5-5` | 20/20 | 10/20 | 8.0s | $0.080 |
 
 - **What the tools add:** about 10 more correct answers. Without tools, every model missed all 4 recent-events questions.
+- **Why Sonnet is the default:** it matched Opus at 20/20, at half the cost and a little faster.
 - **Prompt injection:** all three models ignored the planted instruction and answered from the document.
 - **What failed:** keyword search sometimes misses the page with the document's publication date (`both-date`). Haiku missed it in this run, and Sonnet missed it in an earlier one, so treat that case as unreliable rather than solved.
 - **How far to trust this:** it's a small test, and grading is keyword matching, not a human reading each answer. Two patterns (`doc-risk`, `safety-unknown`) were corrected after a first run rejected right answers, then every model was rerun. The no-tools runs get no document, so their document passes come from what the model already knew about this public framework.
@@ -81,7 +82,7 @@ A public demo spends real API credit, so limits come first:
 - **Visitor isolation:** each chat has its own in-memory search index, so visitors never see each other's files. A notice tells visitors that their files are sent to Anthropic's API.
 - **Caps:** messages up to 4,000 characters; uploads up to 5 MB and 500 passages, one file per chat; 20 questions per chat; at most 3 web searches and 8 model calls per answer; one answer at a time per chat; at most 100 chats in memory, oldest dropped first. Errors show a short message, never internals.
 - **Known limits:** keyword search can miss paraphrases, and "summarize the whole file" only sees the best-matching passages. Scanned PDFs have no text to search. Request bodies on `/chat` aren't size-capped before validation, so a huge request could crash a free instance until it restarts.
-- **Model:** set by the `MODEL` env var, default `claude-opus-5-5`. Measured cost per question: about $0.08 on Opus 5.5 and $0.007 on `claude-haiku-5-5` (see Results).
+- **Model:** set by the `MODEL` env var, default `claude-sonnet-5-5`. Measured cost per question: about $0.04 on Sonnet 5.5, $0.08 on `claude-opus-5-5` and $0.007 on `claude-haiku-5-5` (see Results).
 
 ## Running Locally
 

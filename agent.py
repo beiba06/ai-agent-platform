@@ -7,7 +7,7 @@ import anthropic
 
 import rag
 
-MODEL = os.environ.get("MODEL", "claude-opus-5-5")
+MODEL = os.environ.get("MODEL", "claude-sonnet-5-5")
 PRICES = {  # $ per 1M tokens in/out, including the models a declined request can fall back to
     "claude-opus-5-5": (4, 20), "claude-sonnet-5-5": (2, 10), "claude-haiku-5-5": (0.10, 0.50),
     "claude-opus-5": (5, 25), "claude-opus-4-8": (5, 25), "claude-sonnet-5": (2, 10),
