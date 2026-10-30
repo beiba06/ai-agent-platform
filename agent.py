@@ -28,7 +28,7 @@ TOOLS = [
         "strict": True,
     },
 ]
-DOC_NOTE = "\n\n(The visitor has uploaded a document in this chat. Use search_docs for anything about it.)"
+DOC_NOTE = "\n\n(The visitor has uploaded a document in this chat. Use search_docs for anything about it, and cite every passage you use.)"
 # If Claude declines a request, the API reruns it on a fallback model. Haiku 5.5 has no fallback.
 FALLBACK = {} if "haiku" in MODEL else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
 

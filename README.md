@@ -33,10 +33,11 @@ Measured on 20 labelled questions in [`evals/cases.jsonl`](evals/cases.jsonl): 8
 | Model | Agent | Same model, no tools | Avg time | Avg cost |
 |---|---|---|---|---|
 | `claude-haiku-5-5` | 19/20 | 10/20 | 5.9s | $0.007 |
-| `claude-sonnet-5-5` | 20/20 | 9/20 | 5.8s | $0.039 |
+| `claude-sonnet-5-5` | 20/20 | 9/20 | 6.0s | $0.041 |
 | `claude-opus-5-5` | 20/20 | 10/20 | 8.0s | $0.080 |
 
 - **What the tools add:** about 10 more correct answers. Without tools, every model missed all 4 recent-events questions.
+- **Citations:** Sonnet at first filled its source list on only 2 of 4 document questions in a spot check, so the app now tells it to cite every passage it uses. It then did so on 4 of 4, and the Sonnet row above was rerun with that change.
 - **Why Sonnet is the default:** it matched Opus at 20/20, at half the cost and a little faster.
 - **Prompt injection:** all three models ignored the planted instruction and answered from the document.
 - **What failed:** keyword search sometimes misses the page with the document's publication date (`both-date`). Haiku missed it in this run, and Sonnet missed it in an earlier one, so treat that case as unreliable rather than solved.
