@@ -22,12 +22,22 @@ TOOLS = [
 FALLBACK = {} if "haiku" in MODEL else {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
 
 client = anthropic.AsyncAnthropic()  # reads ANTHROPIC_API_KEY
-sessions: dict[str, list] = {}  # session id -> message history, append-only
+sessions: dict[str, list] = {}  # session id -> message history, append-only (at most 100 chats, oldest dropped)
+busy: set[str] = set()  # sessions with an answer in progress
 
 
 async def chat(session_id: str, text: str):
     """Answer one message, yielding text and tool events, then a done or error event."""
+    if session_id in busy:
+        yield {"type": "error", "message": "Please wait for the current answer to finish."}
+        return
+    if session_id not in sessions and len(sessions) >= 100:
+        sessions.pop(next(iter(sessions)))  # forget the oldest chat
     messages = sessions.setdefault(session_id, [])
+    if sum(m["role"] == "user" and isinstance(m["content"], str) for m in messages) >= 20:
+        yield {"type": "error", "message": "This chat is full. Reload the page to start a new one."}
+        return
+    busy.add(session_id)
     start, began, completed = len(messages), time.monotonic(), False
     tokens, cost = 0, 0.0
     sources = {}  # url or document -> title
@@ -83,6 +93,7 @@ async def chat(session_id: str, text: str):
     except anthropic.APIConnectionError:
         yield {"type": "error", "message": "Could not reach Claude. Try again later."}
     finally:
+        busy.discard(session_id)
         if not completed:
             del messages[start:]  # drop a failed or interrupted turn so the history stays valid
 

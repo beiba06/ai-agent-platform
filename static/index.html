@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Agent</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { margin-bottom: 4px; }
+  .intro { margin-top: 0; opacity: .8; }
+  #log { display: flex; flex-direction: column; gap: 12px; margin: 16px 0; }
+  .msg { white-space: pre-wrap; padding: 10px 12px; border-radius: 10px; line-height: 1.45; scroll-margin-bottom: 100px; }
+  .user { align-self: flex-end; max-width: 85%; background: #2563eb; color: #fff; }
+  .bot { background: rgba(127, 127, 127, .12); }
+  .tool, .meta, .sources { font-size: 13px; opacity: .7; }
+  .tool { margin: 4px 0; }
+  .sources a, .sources span { display: block; }
+  .error { color: #dc2626; }
+  form { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 12px 0; background: Canvas; }
+  textarea { flex: 1; font: inherit; padding: 8px; resize: vertical; }
+  button { font: inherit; padding: 8px 14px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>AI Agent</h1>
+<p class="intro">Ask anything. It searches the web, runs code in a sandbox, and cites its sources.
+  <small>Your messages are sent to Anthropic's API.</small></p>
+<p id="examples">
+  <button>What happened in AI this week?</button>
+  <button>Use code to find the 50th Fibonacci number.</button>
+</p>
+<div id="log"></div>
+<form id="form">
+  <textarea id="input" rows="2" maxlength="4000" placeholder="Ask a question…" required></textarea>
+  <button id="send">Send</button>
+</form>
+<script>
+const sessionId = crypto.randomUUID();
+const log = document.getElementById("log"), input = document.getElementById("input"), send = document.getElementById("send");
+
+function line(cls, text) {
+  const el = document.createElement("div");
+  el.className = cls;
+  el.textContent = text;  // never innerHTML: answers may quote untrusted web pages
+  return el;
+}
+
+function show(bot, e) {
+  if (e.type === "text") {
+    bot.span ??= bot.appendChild(document.createElement("span"));
+    bot.span.textContent += e.text;
+  } else if (e.type === "tool") {
+    const label = {web_search: "Searching the web", search_docs: "Searching your document"}[e.name] || "Running code";
+    bot.append(line("tool", e.input?.query ? `${label}: ${e.input.query}` : label));
+    bot.span = null;  // text after a tool call starts a new paragraph
+  } else if (e.type === "error") {
+    bot.append(line("error", e.message));
+  } else if (e.type === "done") {
+    const sources = line("sources", e.sources.length ? "Sources:" : "");
+    for (const s of e.sources) {
+      const isLink = /^https?:\/\//.test(s.url);
+      const el = document.createElement(isLink ? "a" : "span");
+      el.textContent = s.title || s.url;
+      if (isLink) Object.assign(el, {href: s.url, target: "_blank", rel: "noopener noreferrer"});
+      sources.append(el);
+    }
+    bot.append(sources, line("meta", `${e.model} · ${e.seconds}s · ${e.tokens.toLocaleString()} tokens · $${e.cost.toFixed(3)}`));
+  }
+  bot.scrollIntoView({block: "end"});
+}
+
+async function ask(question) {
+  send.disabled = true;
+  log.append(line("msg user", question));
+  const bot = log.appendChild(line("msg bot", ""));
+  try {
+    const res = await fetch("/chat", {method: "POST", headers: {"Content-Type": "application/json"},
+                                      body: JSON.stringify({session_id: sessionId, message: question})});
+    if (!res.ok) throw new Error(`Request failed (${res.status}).`);
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (let chunk; !(chunk = await reader.read()).done;) {
+      const events = (buffer + chunk.value).replace(/\r/g, "").split("\n\n");
+      buffer = events.pop();  // keep a partial event for the next chunk
+      for (const event of events) {
+        const data = event.split("\n").filter(l => l.startsWith("data: ")).map(l => l.slice(6)).join("\n");
+        if (data) show(bot, JSON.parse(data));  // ": ping" keepalive comments have no data
+      }
+    }
+  } catch (err) {
+    show(bot, {type: "error", message: err.message});
+  }
+  send.disabled = false;
+  input.focus();
+}
+
+document.getElementById("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const question = input.value.trim();
+  if (!question || send.disabled) return;
+  input.value = "";
+  ask(question);
+});
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("form").requestSubmit(); }
+});
+document.querySelectorAll("#examples button").forEach(b => b.addEventListener("click", () => !send.disabled && ask(b.textContent)));
+</script>
+</body>
+</html>
